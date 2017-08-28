@@ -1,0 +1,29 @@
+#!/bin/bash -ex
+echo $PWD
+VERSION_DEFAULT=$( cat VERSION | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' )
+
+[[ -z "${DEPLOY_ENV}" ]] && MyVar='default' || MyVar="${DEPLOY_ENV}"
+GIT_COMMIT=$( git rev-parse --short HEAD )
+BUILD_DATE=$( date -u +"%Y-%m-%dT%H:%M:%SZ" )
+GIT_URL=$( git config --get remote.origin.url )
+
+# Convert github ssh repo to https
+if echo "$GIT_URL" | grep -q "git@github.com"; then
+  GIT_URL=$( echo "$GIT_URL" | sed -r 's|git@github.com:|https://github.com/|' )
+fi
+
+# Find out if tag on this branch equals the version release, otherwise mark with build
+tag_hash=$( git rev-list ${VERSION} -n 1 || echo "222" )
+cur_hash=$( git rev-parse HEAD )
+if [ "$tag_hash" != "$cur_hash" ]; then
+    # dev build
+    VERSION="${VERSION}_${GIT_COMMIT}"
+fi
+
+echo "export VERSION=\"$VERSION\"" >> "$BASH_ENV"
+echo "export GIT_COMMIT=\"$GIT_COMMIT\"" >> "$BASH_ENV"
+echo "export BUILD_DATE=\"$BUILD_DATE\"" >> "$BASH_ENV"
+echo "export GIT_URL=\"$GIT_URL\"" >> "$BASH_ENV"
+
+echo -e "\n\nBASH_ENV:\n\n$(cat "$BASH_ENV")\n"
+

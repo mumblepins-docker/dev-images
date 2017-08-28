@@ -1,0 +1,125 @@
+#!/usr/bin/python
+from __future__ import print_function
+import sys
+
+import json
+import sys
+import urllib2
+from pprint import pprint
+import os
+import semver
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+
+def version_from_file(filename):
+    # type: (str) -> str
+    if not os.path.isfile(filename):
+        raise IOError("File {} doesn't exist, ignoring".format(filename))
+    return open(filename).readline().strip()
+
+
+parser = ArgumentParser(
+        description="""Gets minimum semantic versioning patch version from Docker Hub.
+If no VERSION file, returns maximum of Docker Hub version +1 patch version. 
+If VERSION file exists, returns VERSION if that is greater than DockerHub
+Major.Minor version, or +1 of same DockerHub Major.Minor version
+
+Examples:
+DockerHub has tags for 'name/repo':
+  1.0.0
+  1.0.1
+  1.0.2
+  1.1.0
+  1.1.1
+    
+  VERSION file exists and is equal to:
+    1.0.3:
+      get-version name/repo
+        returns: 1.0.3
+      get-version name/repo -V 1.1.2
+        returns: 1.1.2
+      get-version name/repo -V 1.1
+        returns: 1.1.2
+    1.1.2:
+      get-version name/repo
+        returns: 1.1.2
+      get-version name/repo -V 1.0
+        returns: 1.0.3
+    1.1:
+      get-version name/repo
+        returns: 1.1.2
+    2.0
+      get-version name/repo
+        returns: 2.0.0
+  VERSION file doesn't exist:
+    get-version name/repo 1.1.2
+""",
+        formatter_class=RawDescriptionHelpFormatter)
+parser.add_argument("repository",
+                    help="Repository name (e.g. mumblepins/docker-on-debian-circleci)", type=str)
+parser.add_argument("-f", dest='version_file',
+                    help="Other version file (default: VERSION)", default="VERSION", type=str)
+parser.add_argument("-V", dest='spec_version',
+                    help="Specified minimum version (defaults to that found in VERSION, overrides VERSION)", type=str)
+parser.add_argument("--ignore-file", dest='ignore_file', help="Ignores VERSION file if one exists", action='store_true')
+
+args = parser.parse_args()
+repository = args.repository
+base_version = None
+ignore_file = args.ignore_file
+if args.spec_version:
+    base_version = args.spec_version
+elif not ignore_file:
+    try:
+        base_version = version_from_file(args.version_file)
+    except IOError as e:
+        eprint(e)
+        ignore_file = True
+
+if base_version is not None:
+    bvc = base_version.count('.')
+    if bvc == 0:
+        base_version = base_version + ".0.0"
+    elif bvc == 1:
+        if base_version.endswith('.'):
+            base_version = base_version + "0.0"
+        else:
+            base_version = base_version + ".0"
+    elif bvc == 2 and base_version.endswith('.'):
+        base_version = base_version + "0"
+
+    base_ver = semver.parse_version_info(base_version)
+    base_major = base_ver.major
+    base_minor = base_ver.minor
+    base_patch = base_ver.patch
+
+tag_url = 'https://hub.docker.com/v2/repositories/{}/tags'.format(repository)
+
+tag_json = json.load(urllib2.urlopen(tag_url))
+highest_built_version = "0.0.0"
+
+for result in tag_json['results']:
+    name = result['name']
+    try:
+        ver = semver.parse_version_info(name)
+    except ValueError:
+        continue
+    if base_version is not None:
+        if ver.major == base_major and ver.minor == base_minor:
+            # find highest of matching base version
+            highest_built_version = semver.max_ver(highest_built_version, name)
+    else:
+        # Just find the highest of any version
+        highest_built_version = semver.max_ver(highest_built_version, name)
+
+if base_version is not None:
+    if semver.compare(highest_built_version, base_version) >= 0:
+        print(semver.bump_patch(highest_built_version))
+    else:
+        print(base_version)
+else:
+    print(semver.bump_patch(highest_built_version))

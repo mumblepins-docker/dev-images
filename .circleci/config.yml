@@ -1,0 +1,85 @@
+defaults: &defaults
+  working_directory: /tmp/build
+  docker:
+    - image: mumblepins/docker-circleci
+      environment:
+        DOCKER_IMAGE: "mumblepins/circleci-dev"
+
+version: 2
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Init Environment
+          command: init-environment
+      - run:
+          name: Build Docker Image
+          command: |
+            docker build \
+              --build-arg BUILD_DATE="${BUILD_DATE}" \
+              --build-arg VERSION="${VERSION}" \
+              --build-arg VCS_URL="${GIT_URL}" \
+              --build-arg VCS_REF="${GIT_COMMIT}" \
+              -t ${DOCKER_IMAGE}:${VERSION} .
+      - run:
+          name: Save Docker Image to Workspace
+          command: |
+            mkdir -p workspace
+            time (docker save ${DOCKER_IMAGE}:${VERSION} | lz4 -zc > workspace/image.tar.lz4)
+            cat $BASH_ENV > workspace/BASH_ENV_SAVE
+      - persist_to_workspace:
+          root: workspace
+          paths:
+            - image.tar.lz4
+            - BASH_ENV_SAVE
+      - store_artifacts:
+          path: workspace
+
+  deploy:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: workspace
+      - setup_remote_docker
+      - run:
+          name: Init Environment
+          command: set -ex; cat workspace/BASH_ENV_SAVE >> $BASH_ENV
+      - run:
+          name: Check Version Tag
+          command: |
+            # Make sure that we have a clean tag
+            if [[ "$VERSION" == *_* ]]; then echo "Something went wrong, we have a _ in our Version tag"; exit 1; fi
+      - run:
+          name: Docker Image Load
+          command: |
+            time (lz4 -cd workspace/image.tar.lz4 | docker load)
+      - deploy:
+          name: Docker Hub Deploy
+          command : |
+            echo $PWD
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker tag ${DOCKER_IMAGE}:${VERSION} ${DOCKER_IMAGE}:xenial-debuild
+            docker push ${DOCKER_IMAGE}:${VERSION}
+            docker push ${DOCKER_IMAGE}:xenial-debuild
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /^.+$/
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^.+$/
+
+
