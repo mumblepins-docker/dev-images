@@ -2,7 +2,7 @@ FROM buildpack-deps:xenial
 
 RUN set -ex \
     && apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get -qq install -y --no-install-recommends \
         apt-transport-https \
         software-properties-common \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - \
@@ -11,7 +11,7 @@ RUN set -ex \
         $(lsb_release -cs) \
         stable" \
     && apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get -qq install -y --no-install-recommends \
         docker-ce \
         python-pip \
         python-setuptools \
@@ -20,11 +20,11 @@ RUN set -ex \
         python-wheel \
         jq \
         nano \
-    && apt-get install -y \
+    && apt-get -qq install -y \
         dh-make \
         devscripts \
         unzip \
-    && apt-get upgrade -y \
+    && apt-get -qq upgrade -y \
     && pip install semver \
     && rm -rf /var/lib/apt/lists/*
 

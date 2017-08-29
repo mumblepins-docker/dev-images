@@ -191,7 +191,7 @@ for root, dirs, files in os.walk(".", topdown=False):
     env, deploy = init_env(tag_name)
     build_image(workdir, env)
 
-    # save_image(save_dir, env)
+    save_image(save_dir, env)
 
     if deploy:
         deploy_image(env)
