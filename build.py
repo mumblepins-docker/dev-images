@@ -177,7 +177,6 @@ def deploy_image(env, dry_run=False):
     for stag, version in special_tags.items():
         if version == env['VERSION']:
             extra_tags.append('{DOCKER_IMAGE}:{VERSION}-{STAG}'.format(STAG=stag, **env))
-    pprint(extra_tags)
     for tag in extra_tags:
         run_command('docker tag {} {}'.format(main_tag, tag))
     run_command('docker push {}'.format(main_tag), dry_run=dry_run)
