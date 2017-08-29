@@ -15,6 +15,7 @@ from timeit import default_timer as timer
 
 from config import DockerConfig
 
+
 @contextmanager
 def cd(newdir):
     prevdir = os.getcwd()
@@ -189,11 +190,13 @@ class DockerBuild(object):
 
         for tag in extra_tags:
             self.run_command('docker tag {} {}'.format(main_tag, tag))
-        self.run_command('docker push {}'.format(main_tag), dry_run=dry_run)
 
         if not dry_run:
             print "Logging in..."
             print check_output(shsplit('docker login -u {DOCKER_USER} -p {DOCKER_PASS}'.format(**os.environ)))
+
+        self.run_command('docker push {}'.format(main_tag), dry_run=dry_run)
+
         for tag in extra_tags:
             self.run_command('docker push {}'.format(tag), dry_run=dry_run)
 
@@ -202,10 +205,9 @@ class DockerBuild(object):
         shutil.rmtree(self.tempdir)
 
 
-
 if __name__ == '__main__':
 
-    path=sys.argv[-1]
+    path = sys.argv[-1]
     print "Working Path {}".format(path)
     if not os.path.isdir(path):
         print "Path {} is not a directory, quitting".format(path)
