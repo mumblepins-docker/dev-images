@@ -107,15 +107,16 @@ def init_env(tag):
         tag += '_{}'.format(git_commit)
         deploy = False
 
-    build_date = datetime.datetime.utcnow().replace(microsecond=0).isoformat()
-
+    build_date = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+    date = datetime.datetime.utcnow().strftime('%Y%m%d')
     env = dict(
         GIT_COMMIT=git_commit,
         GIT_URL=git_url,
         GIT_BRANCH=git_branch,
         BUILD_DATE=build_date,
         VERSION=tag,
-        DOCKER_IMAGE=DOCKER_IMAGE
+        DOCKER_IMAGE=DOCKER_IMAGE,
+        DATE=date
     )
     env['FULL_IMAGE_NAME'] = '{DOCKER_IMAGE}:{VERSION}'.format(**env)
     return env, deploy
@@ -125,15 +126,16 @@ def build_image(path, env):
     print "Building {FULL_IMAGE_NAME}".format(**env)
 
     with cd(path):
-        cmd = shsplit('docker build \
+        cmd = 'docker build \
               --build-arg BUILD_DATE="{BUILD_DATE}" \
               --build-arg VERSION="{VERSION}" \
               --build-arg VCS_URL="{GIT_URL}" \
               --build-arg VCS_REF="{GIT_COMMIT}" \
-              -t {DOCKER_IMAGE}:{VERSION} .'.format(**env))
-        process = Popen(cmd, stdout=PIPE)
-        for line in iter(process.stdout.readline, ''):
-            sys.stdout.write(line)
+              -t {DOCKER_IMAGE}:{VERSION} .'.format(**env)
+        run_command(cmd)
+        # process = Popen(cmd, stdout=PIPE)
+        # for line in iter(process.stdout.readline, ''):
+        #     sys.stdout.write(line)
 
 
 def save_image(save_dir, env):
@@ -152,6 +154,13 @@ def save_image(save_dir, env):
         print "Elapsed Time: {:0.3f}s".format(end - start)
 
 
+def in_multi(string):
+    for part in ignore_lines:
+        if part in string:
+            return True
+    return False
+
+
 def run_command(string, echo=True, quiet=False):
     cmd = shsplit(string)
     if echo:
@@ -159,12 +168,14 @@ def run_command(string, echo=True, quiet=False):
     process = Popen(cmd, stdout=PIPE)
     for line in iter(process.stdout.readline, ''):
         if not quiet:
-            sys.stdout.write(line)
+            if not in_multi(line):
+                sys.stdout.write(line)
 
 
 def deploy_image(env):
     if latest == env['VERSION']:
         run_command('docker tag {DOCKER_IMAGE}:{VERSION} {DOCKER_IMAGE}:latest'.format(**env))
+    run_command('docker tag {DOCKER_IMAGE}:{VERSION} {DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env))
     print run_command('docker push {DOCKER_IMAGE}:{VERSION}'.format(**env))
 
 
@@ -197,3 +208,4 @@ for root, dirs, files in os.walk(".", topdown=False):
         deploy_image(env)
     print "Deleting temp directory {}".format(tempdir)
     shutil.rmtree(tempdir)
+

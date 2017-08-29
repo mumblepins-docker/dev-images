@@ -9,3 +9,9 @@ fill_in_data = {
 save_dir = 'workspace'
 
 latest='stretch'
+
+ignore_lines=[
+    'Selecting previously unselected ',
+    'Preparing to unpack',
+    'update-alternatives'
+]
