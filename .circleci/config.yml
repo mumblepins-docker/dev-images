@@ -1,0 +1,19 @@
+defaults: &defaults
+  working_directory: /tmp/build
+  docker:
+    - image: mumblepins/docker-circleci
+      environment:
+        DOCKER_IMAGE: "mumblepins/circleci-dev"
+
+version: 2
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build and maybe deploy all images
+          command: ./build.py
+      - store_artifacts:
+          path: workspace
