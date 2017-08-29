@@ -185,7 +185,7 @@ class DockerBuild(object):
         extra_tags = ['{DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env)]
         for stag, version in self.special_tags.items():
             if version == env['VERSION']:
-                extra_tags.append('{DOCKER_IMAGE}:{VERSION}-{STAG}'.format(STAG=stag, **env))
+                extra_tags.append('{DOCKER_IMAGE}:{STAG}'.format(STAG=stag, **env))
 
         for tag in extra_tags:
             self.run_command('docker tag {} {}'.format(main_tag, tag))
@@ -207,7 +207,11 @@ if __name__ == '__main__':
 
     path=sys.argv[-1]
     print "Working Path {}".format(path)
+    if not os.path.isdir(path):
+        print "Path {} is not a directory, quitting".format(path)
+        sys.exit()
     db = DockerBuild(path)
+
     pprint(db.__dict__)
     db.build_image()
     db.save_image()
