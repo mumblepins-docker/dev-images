@@ -2,7 +2,7 @@ defaults: &defaults
   working_directory: /tmp/build
   parallelism: 4
   docker:
-    - image: mumblepins/circleci-dev
+    - image: mumblepins/circleci-dev:stretch
       environment:
         DOCKER_IMAGE: "mumblepins/circleci-dev"
 
