@@ -1,7 +1,8 @@
 defaults: &defaults
   working_directory: /tmp/build
+  parallelism: 4
   docker:
-    - image: mumblepins/docker-circleci
+    - image: mumblepins/circleci-dev
       environment:
         DOCKER_IMAGE: "mumblepins/circleci-dev"
 
@@ -14,6 +15,9 @@ jobs:
       - setup_remote_docker
       - run:
           name: Build and maybe deploy all images
-          command: ./build.py
+          command: |
+            ./splitter.py
+            cat dockerlist
+            circleci tests split dockerlist | xargs -n 1 ./build.py
       - store_artifacts:
           path: workspace

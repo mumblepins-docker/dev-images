@@ -8,20 +8,12 @@ import sys
 import tempfile
 import unicodedata
 from contextlib import contextmanager
+from pprint import pprint
 from shlex import split as shsplit
 from subprocess import check_output, PIPE, Popen
 from timeit import default_timer as timer
 
-from config import *
-
-save_dir = os.path.abspath(save_dir)
-
-fill_in_copy = {}
-for k, v in fill_in_data.items():
-    fill_in_copy[os.path.abspath(k)] = v
-fill_in_data = fill_in_copy
-del fill_in_copy
-
+from config import DockerConfig
 
 @contextmanager
 def cd(newdir):
@@ -31,31 +23,6 @@ def cd(newdir):
         yield
     finally:
         os.chdir(prevdir)
-
-
-def del_empty_dirs():
-    for root, dirs, files in os.walk(".", topdown=False):
-        root = os.path.abspath(root)
-        for d in dirs:
-            fpath = os.path.join(root, d)
-            # print fpath
-            dir_list = os.listdir(fpath)
-            if dir_list == ['Dockerfile'] or len(dir_list) == 0:
-                print "Deleting {}".format(fpath)
-                dirs.remove(d)
-                shutil.rmtree(fpath)
-
-
-def file_fill_in(file_in, file_fill, starter='### Build-time metadata ###'):
-    with open(file_in, 'r') as fhi:
-        in_lines = fhi.readlines()
-    with open(file_fill, 'r') as fhf:
-        fill_in = fhf.readlines()
-    with open(file_in, 'w') as fhi:
-        for line in in_lines:
-            fhi.write(line)
-            if starter in line:
-                fhi.writelines(fill_in)
 
 
 def splitall(path):
@@ -82,136 +49,167 @@ def splitall(path):
     return allparts
 
 
-def create_dir(path, includes):
-    tdir = tempfile.mkdtemp()
-    lastname = os.path.basename(path)
-    tdirmain = os.path.join(tdir, lastname)
-    shutil.copytree(path, tdirmain)
-    for p in includes:
-        shutil.copytree(p, os.path.join(tdirmain, os.path.basename(p)))
-    for k, v in fill_in_data.items():
-        file_fill_in(os.path.join(tdirmain, 'Dockerfile'), k, v)
-    with cd(tdirmain):
-        del_empty_dirs()
-    return tdir, tdirmain
-
-
-def init_env(tag):
-    deploy = True
-    git_commit = check_output(shsplit('git rev-parse --short HEAD')).strip()
-    git_url = check_output(shsplit('git config --get remote.origin.url')).strip()
-    if 'git@github.com' in git_url:
-        git_url = re.sub('git@github.com', 'https://github.com', git_url)
-    git_branch = check_output(shsplit('git rev-parse --abbrev-ref HEAD')).strip()
-    if git_branch != 'master':
-        tag += '_{}'.format(git_commit)
-        deploy = False
-
-    build_date = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
-    date = datetime.datetime.utcnow().strftime('%Y%m%d')
-    env = dict(
-        GIT_COMMIT=git_commit,
-        GIT_URL=git_url,
-        GIT_BRANCH=git_branch,
-        BUILD_DATE=build_date,
-        VERSION=tag,
-        DOCKER_IMAGE=DOCKER_IMAGE,
-        DATE=date
-    )
-    env['FULL_IMAGE_NAME'] = '{DOCKER_IMAGE}:{VERSION}'.format(**env)
-    return env, deploy
-
-
-def build_image(path, env):
-    print "Building {FULL_IMAGE_NAME}".format(**env)
-
-    with cd(path):
-        cmd = 'docker build \
-              --build-arg BUILD_DATE="{BUILD_DATE}" \
-              --build-arg VERSION="{VERSION}" \
-              --build-arg VCS_URL="{GIT_URL}" \
-              --build-arg VCS_REF="{GIT_COMMIT}" \
-              -t {DOCKER_IMAGE}:{VERSION} .'.format(**env)
-        run_command(cmd)
-
-
-def save_image(save_dir, env):
-    print "Saving {FULL_IMAGE_NAME}".format(**env)
-    filename = unicodedata.normalize('NFKD', env['FULL_IMAGE_NAME'].decode('UTF-8')).encode('ascii', 'ignore')
-    filename = unicode(re.sub('[^\w\s-]', '', filename).strip().lower())
-    filename = unicode(re.sub('[-\s]+', '-', filename) + '.tar.lz4')
-    run_command('mkdir -p {}'.format(save_dir))
-    env['SAVE_NAME'] = filename
-    with cd(save_dir):
-        cmd = 'docker save {DOCKER_IMAGE}:{VERSION} | lz4 -zc > {SAVE_NAME}'.format(**env)
-        print cmd
-        start = timer()
-        print check_output(cmd, shell=True)
-        end = timer()
-        print "Elapsed Time: {:0.3f}s".format(end - start)
-
-
-def in_multi(string):
-    for part in ignore_lines:
+def in_multi(string, in_lines):
+    for part in in_lines:
         if part in string:
             return True
     return False
 
 
-def run_command(string, echo=True, quiet=False, dry_run=False):
-    cmd = shsplit(string)
-    if echo:
-        print cmd
-    if dry_run:
-        return
-    process = Popen(cmd, stdout=PIPE)
-    for line in iter(process.stdout.readline, ''):
-        if not quiet:
-            if not in_multi(line):
-                sys.stdout.write(line)
+class DockerBuild(object):
+    def __init__(self, path):
+        pathparts = splitall(path)
+        self.base_tag = '-'.join(pathparts)
+        self.base_path = os.path.abspath(path)
+        self.__dict__.update(DockerConfig.values())
+
+        self.include_dirs = [os.path.abspath(a) for a in self.include_dirs]
+        self.deploy = True
+
+        self.env = None
+
+        self.create_dir()
+        self.init_env()
+
+    def create_dir(self):
+        self.tempdir = tempfile.mkdtemp()
+        lastname = os.path.basename(self.base_path)
+        self.workdir = os.path.join(self.tempdir, lastname)
+        shutil.copytree(self.base_path, self.workdir)
+        for p in self.include_dirs:
+            shutil.copytree(p, os.path.join(self.workdir, os.path.basename(p)))
+        for k, v in self.fill_in_data.items():
+            self.file_fill_in(os.path.abspath(k), v)
+        with cd(self.workdir):
+            self.del_empty_dirs()
+
+    def init_env(self):
+        git_commit = check_output(shsplit('git rev-parse --short HEAD')).strip()
+        git_url = check_output(shsplit('git config --get remote.origin.url')).strip()
+        if 'git@github.com' in git_url:
+            git_url = re.sub('git@github.com', 'https://github.com', git_url)
+        git_branch = check_output(shsplit('git rev-parse --abbrev-ref HEAD')).strip()
+        if git_branch != 'master':
+            self.base_tag += '_{}'.format(git_commit)
+            self.deploy = False
+
+        build_date = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+        date = datetime.datetime.utcnow().strftime('%Y%m%d')
+        self.env = dict(
+            GIT_COMMIT=git_commit,
+            GIT_URL=git_url,
+            GIT_BRANCH=git_branch,
+            BUILD_DATE=build_date,
+            VERSION=self.base_tag,
+            DOCKER_IMAGE=self.DOCKER_IMAGE,
+            DATE=date
+        )
+        self.env['FULL_IMAGE_NAME'] = '{DOCKER_IMAGE}:{VERSION}'.format(**self.env)
+
+    def build_image(self):
+        print "Building {FULL_IMAGE_NAME}".format(**self.env)
+
+        with cd(self.workdir):
+            cmd = 'docker build \
+                  --build-arg BUILD_DATE="{BUILD_DATE}" \
+                  --build-arg VERSION="{VERSION}" \
+                  --build-arg VCS_URL="{GIT_URL}" \
+                  --build-arg VCS_REF="{GIT_COMMIT}" \
+                  -t {DOCKER_IMAGE}:{VERSION} .'.format(**self.env)
+            self.run_command(cmd)
+
+    def run_command(self, string, echo=True, quiet=False, dry_run=False):
+        cmd = shsplit(string)
+        if echo:
+            if dry_run:
+                print "Dry run: {}".format(cmd)
+            else:
+                print "Running: {}".format(cmd)
+        if dry_run:
+            return
+        process = Popen(cmd, stdout=PIPE)
+        for line in iter(process.stdout.readline, ''):
+            if not quiet:
+                if not in_multi(line, self.ignore_lines):
+                    sys.stdout.write(line)
+
+    @staticmethod
+    def del_empty_dirs():
+        for root, dirs, files in os.walk(".", topdown=False):
+            root = os.path.abspath(root)
+            for d in dirs:
+                fpath = os.path.join(root, d)
+                # print fpath
+                dir_list = os.listdir(fpath)
+                if dir_list == ['Dockerfile'] or len(dir_list) == 0:
+                    print "Deleting {}".format(fpath)
+                    dirs.remove(d)
+                    shutil.rmtree(fpath)
+
+    def file_fill_in(self, file_fill, starter):
+        d_file = os.path.join(self.workdir, 'Dockerfile')
+        with open(d_file, 'r') as fhi:
+            in_lines = fhi.readlines()
+        with open(file_fill, 'r') as fhf:
+            fill_in = fhf.readlines()
+        with open(d_file, 'w') as fhi:
+            for line in in_lines:
+                fhi.write(line)
+                if starter in line:
+                    fhi.writelines(fill_in)
+
+    def save_image(self):
+        save_dir = os.path.abspath(self.save_dir)
+        env = self.env
+        print "Saving {FULL_IMAGE_NAME}".format(**env)
+        filename = unicodedata.normalize('NFKD', env['FULL_IMAGE_NAME'].decode('UTF-8')).encode('ascii', 'ignore')
+        filename = unicode(re.sub('[^\w\s-]', '', filename).strip().lower())
+        filename = unicode(re.sub('[-\s]+', '-', filename) + '.tar.lz4')
+        self.run_command('mkdir -p {}'.format(save_dir))
+        env['SAVE_NAME'] = filename
+        with cd(save_dir):
+            cmd = 'docker save {DOCKER_IMAGE}:{VERSION} | lz4 -zc > {SAVE_NAME}'.format(**env)
+            print cmd
+            start = timer()
+            print check_output(cmd, shell=True)
+            end = timer()
+            print "Elapsed Time: {:0.3f}s".format(end - start)
+
+    def deploy_image(self):
+        env = self.env
+        if self.deploy:
+            dry_run = False
+        else:
+            dry_run = True
+        main_tag = '{DOCKER_IMAGE}:{VERSION}'.format(**env)
+        extra_tags = ['{DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env)]
+        for stag, version in self.special_tags.items():
+            if version == env['VERSION']:
+                extra_tags.append('{DOCKER_IMAGE}:{VERSION}-{STAG}'.format(STAG=stag, **env))
+
+        for tag in extra_tags:
+            self.run_command('docker tag {} {}'.format(main_tag, tag))
+        self.run_command('docker push {}'.format(main_tag), dry_run=dry_run)
+
+        if not dry_run:
+            print "Logging in..."
+            print check_output(shsplit('docker login -u {DOCKER_USER} -p {DOCKER_PASS}'.format(**os.environ)))
+        for tag in extra_tags:
+            self.run_command('docker push {}'.format(tag), dry_run=dry_run)
+
+    def clean_temp(self):
+        print "Deleting temp directory {}".format(self.tempdir)
+        shutil.rmtree(self.tempdir)
 
 
-def deploy_image(env, dry_run=False):
-    main_tag = '{DOCKER_IMAGE}:{VERSION}'.format(**env)
-    extra_tags = ['{DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env)]
-    for stag, version in special_tags.items():
-        if version == env['VERSION']:
-            extra_tags.append('{DOCKER_IMAGE}:{VERSION}-{STAG}'.format(STAG=stag, **env))
-    for tag in extra_tags:
-        run_command('docker tag {} {}'.format(main_tag, tag))
-    run_command('docker push {}'.format(main_tag), dry_run=dry_run)
-    for tag in extra_tags:
-        run_command('docker push {}'.format(tag), dry_run=dry_run)
 
+if __name__ == '__main__':
 
-print "Logging in..."
-print check_output(shsplit('docker login -u {DOCKER_USER} -p {DOCKER_PASS}'.format(**os.environ)))
-
-for root, dirs, files in os.walk(".", topdown=False):
-    root = re.sub(r'^\./', '', root)
-    fullpath = splitall(root)
-    if fullpath[0].startswith('.'):
-        continue
-    if fullpath[0] in include_dirs:
-        continue
-    if 'Dockerfile' not in files:
-        continue
-
-    tag_name = '-'.join(fullpath)
-
-    abspath = os.path.abspath(root)
-    incpaths = [os.path.abspath(a) for a in include_dirs]
-
-    tempdir, workdir = create_dir(abspath, incpaths)
-
-    env, deploy = init_env(tag_name)
-    build_image(workdir, env)
-
-    save_image(save_dir, env)
-
-    if deploy:
-        deploy_image(env)
-    else:
-        deploy_image(env, True)
-    print "Deleting temp directory {}".format(tempdir)
-    shutil.rmtree(tempdir)
+    path=sys.argv[-1]
+    print "Working Path {}".format(path)
+    db = DockerBuild(path)
+    pprint(db.__dict__)
+    db.build_image()
+    db.save_image()
+    db.deploy_image()
+    db.clean_temp()

@@ -3,9 +3,8 @@ ARG VCS_REF
 ARG VCS_URL
 ARG VERSION
 LABEL org.label-schema.build-date=$BUILD_DATE \
-      org.label-schema.name="Docker-on-Debian-CircleCI" \
-      org.label-schema.description="Docker on Debian for CircleCI" \
-      org.label-schema.url="https://hub.docker.com/r/mumblepins/docker-on-debian-circleci/" \
+      org.label-schema.name="CircleCI Dev Build" \
+      org.label-schema.url="https://hub.docker.com/r/mumblepins/circleci-dev/" \
       org.label-schema.vcs-ref=$VCS_REF \
       org.label-schema.vcs-url=$VCS_URL \
       org.label-schema.version=$VERSION \
