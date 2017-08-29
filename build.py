@@ -133,9 +133,6 @@ def build_image(path, env):
               --build-arg VCS_REF="{GIT_COMMIT}" \
               -t {DOCKER_IMAGE}:{VERSION} .'.format(**env)
         run_command(cmd)
-        # process = Popen(cmd, stdout=PIPE)
-        # for line in iter(process.stdout.readline, ''):
-        #     sys.stdout.write(line)
 
 
 def save_image(save_dir, env):
@@ -143,7 +140,7 @@ def save_image(save_dir, env):
     filename = unicodedata.normalize('NFKD', env['FULL_IMAGE_NAME'].decode('UTF-8')).encode('ascii', 'ignore')
     filename = unicode(re.sub('[^\w\s-]', '', filename).strip().lower())
     filename = unicode(re.sub('[-\s]+', '-', filename) + '.tar.lz4')
-    print check_output(shsplit('mkdir -p {}'.format(save_dir)))
+    run_command('mkdir -p {}'.format(save_dir))
     env['SAVE_NAME'] = filename
     with cd(save_dir):
         cmd = 'docker save {DOCKER_IMAGE}:{VERSION} | lz4 -zc > {SAVE_NAME}'.format(**env)
@@ -161,10 +158,12 @@ def in_multi(string):
     return False
 
 
-def run_command(string, echo=True, quiet=False):
+def run_command(string, echo=True, quiet=False, dry_run=False):
     cmd = shsplit(string)
     if echo:
         print cmd
+    if dry_run:
+        return
     process = Popen(cmd, stdout=PIPE)
     for line in iter(process.stdout.readline, ''):
         if not quiet:
@@ -172,11 +171,18 @@ def run_command(string, echo=True, quiet=False):
                 sys.stdout.write(line)
 
 
-def deploy_image(env):
-    if latest == env['VERSION']:
-        run_command('docker tag {DOCKER_IMAGE}:{VERSION} {DOCKER_IMAGE}:latest'.format(**env))
-    run_command('docker tag {DOCKER_IMAGE}:{VERSION} {DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env))
-    print run_command('docker push {DOCKER_IMAGE}:{VERSION}'.format(**env))
+def deploy_image(env, dry_run=False):
+    main_tag = '{DOCKER_IMAGE}:{VERSION}'.format(**env)
+    extra_tags = ['{DOCKER_IMAGE}:{VERSION}-{DATE}'.format(**env)]
+    for stag, version in special_tags.items():
+        if version == env['VERSION']:
+            extra_tags.append('{DOCKER_IMAGE}:{VERSION}-{STAG}'.format(STAG=stag, **env))
+    pprint(extra_tags)
+    for tag in extra_tags:
+        run_command('docker tag {} {}'.format(main_tag, tag))
+    run_command('docker push {}'.format(main_tag), dry_run=dry_run)
+    for tag in extra_tags:
+        run_command('docker push {}'.format(tag), dry_run=dry_run)
 
 
 print "Logging in..."
@@ -206,6 +212,7 @@ for root, dirs, files in os.walk(".", topdown=False):
 
     if deploy:
         deploy_image(env)
+    else:
+        deploy_image(env, True)
     print "Deleting temp directory {}".format(tempdir)
     shutil.rmtree(tempdir)
-

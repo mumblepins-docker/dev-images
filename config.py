@@ -8,9 +8,15 @@ fill_in_data = {
 
 save_dir = 'workspace'
 
-latest='stretch'
+special_tags = {
+    'latest': 'stretch',
+    'ubuntu': 'zesty',
+    'ubuntu-LTS': 'xenial',
+    'debian': 'stretch'
+}
+latest = 'stretch'
 
-ignore_lines=[
+ignore_lines = [
     'Selecting previously unselected ',
     'Preparing to unpack',
     'update-alternatives'
