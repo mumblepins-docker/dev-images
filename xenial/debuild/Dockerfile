@@ -24,6 +24,7 @@ RUN set -ex \
         dh-make \
         devscripts \
         unzip \
+        dh-systemd \
     && apt-get -qq -o=Dpkg::Use-Pty=0 upgrade \
     && pip install semver \
     && rm -rf /var/lib/apt/lists/*
