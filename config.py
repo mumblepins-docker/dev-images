@@ -9,7 +9,9 @@ class DockerConfig:
         'latest': 'stretch',
         'ubuntu': 'zesty',
         'ubuntu-LTS': 'xenial',
-        'debian': 'stretch'
+        'debian': 'stretch',
+        'ubuntu-debuild': 'zesty-debuild',
+        'ubuntu-LTS-debuild': 'xenial-debuild'
     }
     latest = 'stretch'
     ignore_lines = [
