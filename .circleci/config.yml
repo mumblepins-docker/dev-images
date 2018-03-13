@@ -18,6 +18,6 @@ jobs:
           command: |
             ./splitter.py
             cat dockerlist
-            circleci tests split dockerlist | xargs -n 1 ./build.py
+            circleci tests split dockerlist | xargs -n 1 -r ./build.py
       - store_artifacts:
           path: workspace
