@@ -4,7 +4,7 @@ RUN set -ex \
     && apt-get update \
     && export DEBIAN_FRONTEND=noninteractive \
     && export DEBCONF_NONINTERACTIVE_SEEN=true \
-    && apt-get -qq --no-install-recommends \
+    && apt-get -qq install --no-install-recommends \
         apt-transport-https \
         software-properties-common \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - \

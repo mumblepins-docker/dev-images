@@ -7,10 +7,10 @@ class DockerConfig:
     save_dir = 'workspace'
     special_tags = {
         'latest': 'stretch',
-        'ubuntu': 'zesty',
+        'ubuntu': 'bionic',
         'ubuntu-LTS': 'xenial',
         'debian': 'stretch',
-        'ubuntu-debuild': 'zesty-debuild',
+        'ubuntu-debuild': 'bionic-debuild',
         'ubuntu-LTS-debuild': 'xenial-debuild'
     }
     latest = 'stretch'
