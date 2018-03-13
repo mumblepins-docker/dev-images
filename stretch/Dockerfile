@@ -2,7 +2,9 @@ FROM buildpack-deps:stretch
 
 RUN set -ex \
     && apt-get update \
-    && apt-get -qq -o=Dpkg::Use-Pty=0 install --no-install-recommends \
+    && export DEBIAN_FRONTEND=noninteractive \
+    && export DEBCONF_NONINTERACTIVE_SEEN=true \
+    && apt-get -qq --no-install-recommends \
         apt-transport-https \
         software-properties-common \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - \
@@ -11,7 +13,7 @@ RUN set -ex \
         $(lsb_release -cs) \
         stable" \
     && apt-get update \
-    && apt-get -qq -o=Dpkg::Use-Pty=0 install --no-install-recommends \
+    && apt-get -qq  install --no-install-recommends \
         docker-ce \
         python-pip \
         python-setuptools \
@@ -20,7 +22,7 @@ RUN set -ex \
         python-wheel \
         jq \
         nano \
-    && apt-get -qq -o=Dpkg::Use-Pty=0 upgrade \
+    && apt-get -qq dist-upgrade \
     && pip install semver \
     && rm -rf /var/lib/apt/lists/*
 

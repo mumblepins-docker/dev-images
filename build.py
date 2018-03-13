@@ -88,7 +88,7 @@ class DockerBuild(object):
         git_commit = check_output(shsplit('git rev-parse --short HEAD')).strip()
         git_url = check_output(shsplit('git config --get remote.origin.url')).strip()
         if 'git@github.com' in git_url:
-            git_url = re.sub('git@github.com', 'https://github.com', git_url)
+            git_url = re.sub('git@github.com:', 'https://github.com/', git_url)
         git_branch = check_output(shsplit('git rev-parse --abbrev-ref HEAD')).strip()
         if git_branch != 'master':
             self.base_tag += '_{}'.format(git_commit)
